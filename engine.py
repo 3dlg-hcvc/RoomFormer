@@ -317,9 +317,10 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                                                             room_types=room_types, 
                                                             window_door_lines=window_doors, 
                                                             window_door_lines_types=window_doors_types)
-    
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
+            else:
+                quant_result_dict_scene = None
 
             if quant_result_dict is None:
                 quant_result_dict = quant_result_dict_scene
@@ -345,7 +346,8 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                         pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
 
                     pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
-                    plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
+                    # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
+                    plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path)
                 else:
                     # plot regular room floorplan
                     room_polys = [np.array(r) for r in room_polys]
@@ -364,21 +366,22 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
                 cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
 
-    for k in quant_result_dict.keys():
-        quant_result_dict[k] /= float(scene_counter)
+    if quant_result_dict is not None:
+        for k in quant_result_dict.keys():
+            quant_result_dict[k] /= float(scene_counter)
 
-    metric_category = ['room','corner','angles']
-    if semantic_rich:
-        metric_category += ['room_sem','window_door']
-    for metric in metric_category:
-        prec = quant_result_dict[metric+'_prec']
-        rec = quant_result_dict[metric+'_rec']
-        f1 = 2*prec*rec/(prec+rec)
-        quant_result_dict[metric+'_f1'] = f1
+        metric_category = ['room','corner','angles']
+        if semantic_rich:
+            metric_category += ['room_sem','window_door']
+        for metric in metric_category:
+            prec = quant_result_dict[metric+'_prec']
+            rec = quant_result_dict[metric+'_rec']
+            f1 = 2*prec*rec/(prec+rec)
+            quant_result_dict[metric+'_f1'] = f1
 
-    print("*************************************************")
-    print(quant_result_dict)
-    print("*************************************************")
+        print("*************************************************")
+        print(quant_result_dict)
+        print("*************************************************")
 
-    with open(os.path.join(output_dir, 'results.txt'), 'w') as file:
-        file.write(json.dumps(quant_result_dict))
+        with open(os.path.join(output_dir, 'results.txt'), 'w') as file:
+            file.write(json.dumps(quant_result_dict))

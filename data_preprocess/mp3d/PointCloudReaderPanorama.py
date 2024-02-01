@@ -5,33 +5,35 @@ from sklearn.preprocessing import normalize
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import jsonlines
 from tqdm import tqdm
 
 NUM_SECTIONS = -1
 
 class PointCloudReaderPanorama():
 
-    def __init__(self, path, resolution="full", random_level=0, generate_color=False, generate_normal=False):
-        self.path = path
+    def __init__(self, panos, house_id, data_dir, random_level=0, generate_color=False, generate_normal=False):
+        # self.path = path
+        self.panos = panos
         self.random_level = random_level
-        self.resolution = resolution
+        # self.resolution = resolution
         self.generate_color = generate_color
         self.generate_normal = generate_normal
-        sections = [p for p in os.listdir(os.path.join(path, "2D_rendering"))]
-        self.depth_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "depth.png"]) for p in sections]
-        self.rgb_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "rgb_coldlight.png"]) for p in sections]
-        self.normal_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "normal.png"]) for p in sections]
-        self.camera_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", "camera_xyz.txt"]) for p in sections]
+        self.depth_paths = [os.path.join(data_dir, "equirectangular_instance_panos", house_id, f"{p}.depth.png") for p in panos]
+        # self.depth_paths = ["/project/3dlg-hcvc/rlsd/data/annotations/equirectangular_depth/6420eb74be0192bc6a4db1ff/34557b20f94f4e70b7604ab749d44d61.depth.png"]
+        self.rgb_paths = [os.path.join(data_dir, "equirectangular_rgb_panos", house_id, f"{p}.png") for p in panos]
+        # self.normal_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "normal.png"]) for p in sections]
+        self.camera_path = os.path.join(data_dir, "equirectangular_camera_poses", f"{house_id}.jsonl")
         self.camera_centers = self.read_camera_center()
         self.point_cloud = self.generate_point_cloud(self.random_level, color=self.generate_color, normal=self.generate_normal)
 
     def read_camera_center(self):
-        camera_centers = []
-        for i in range(len(self.camera_paths)):
-            with open(self.camera_paths[i], 'r') as f:
-                line = f.readline()
-            center = list(map(float, line.strip().split(" ")))
-            camera_centers.append(np.asarray([center[0], center[1], center[2]]))
+        camera_centers = {}
+        with jsonlines.open(self.camera_path) as cameras:
+            for c in cameras:
+                cam3d2world = np.array(c["camera"]["extrinsics"]).reshape(4, 4)
+                center = cam3d2world[:3, 3]
+                camera_centers[c["id"]] = center #* 4000.
         return camera_centers
 
     def generate_point_cloud(self, random_level=0, color=False, normal=False):
@@ -41,30 +43,33 @@ class PointCloudReaderPanorama():
         points = {}
 
         # Getting Coordinates
-        for i in tqdm(range(len(self.depth_paths)), leave=False):
+        for i, pano_id in enumerate(tqdm(self.panos, leave=False)):
             depth_img = cv2.imread(self.depth_paths[i], cv2.IMREAD_ANYDEPTH | cv2.IMREAD_ANYCOLOR)
+            depth_img = cv2.resize(depth_img, (512, 1024))
             x_tick = 180.0/depth_img.shape[0]
             y_tick = 360.0/depth_img.shape[1]
 
             rgb_img = cv2.imread(self.rgb_paths[i])
             rgb_img = cv2.cvtColor(rgb_img, code=cv2.COLOR_BGR2RGB)
-            normal_img = cv2.imread(self.normal_paths[i])
+            rgb_img = cv2.resize(rgb_img, (512, 1024))
+            # normal_img = cv2.imread(self.normal_paths[i])
 
             for x in range(0, depth_img.shape[0]):
                 for y in range(0, depth_img.shape[1]):
                     # need 90 - -09
                     alpha = 90 - (x * x_tick)
-                    beta = y * y_tick -180
+                    beta = y * y_tick - 180
 
                     depth = depth_img[x,y] + np.random.random()*random_level
 
                     if depth > 500.:
+                        depth = float(depth) / 1000.
                         z_offset = depth*np.sin(np.deg2rad(alpha))
                         xy_offset = depth*np.cos(np.deg2rad(alpha))
                         x_offset = xy_offset * np.sin(np.deg2rad(beta))
                         y_offset = xy_offset * np.cos(np.deg2rad(beta))
                         point = np.asarray([x_offset, y_offset, z_offset])
-                        coords.append(point + self.camera_centers[i])
+                        coords.append(point + self.camera_centers[pano_id])
                         colors.append(rgb_img[x, y])
                         # normals.append(normalize(normal_img[x, y].reshape(-1, 1)).ravel())
             # break
@@ -73,14 +78,13 @@ class PointCloudReaderPanorama():
         colors = np.asarray(colors) / 255.0
         # normals = np.asarray(normals)
 
-        coords[:,:2] = np.round(coords[:,:2] / 10) * 10.
-        coords[:,2] = np.round(coords[:,2] / 100) * 100.
-        unique_coords, unique_ind = np.unique(coords, return_index=True, axis=0)
+        # coords[:,:2] = np.round(coords[:,:2] / 10) * 10.
+        # coords[:,2] = np.round(coords[:,2] / 100) * 100.
+        # unique_coords, unique_ind = np.unique(coords, return_index=True, axis=0)
 
-        coords = coords[unique_ind]
-        colors = colors[unique_ind]
-        # normals = normals[unique_ind]
-
+        # coords = coords[unique_ind]
+        # colors = colors[unique_ind]
+        # # normals = normals[unique_ind]
 
         points['coords'] = coords
         points['colors'] = colors

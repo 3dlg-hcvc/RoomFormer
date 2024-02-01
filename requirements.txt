@@ -13,3 +13,9 @@ shapely==1.8.2
 tqdm==4.64.0
 pycocotools
 descartes
+open3d
+scikit-learn
+jsonlines
+plyfile
+trimesh
+pyrender

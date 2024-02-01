@@ -1,2 +1,14 @@
 __pycache__
 .pyc
+*.so
+*.o
+*.egg
+
+data/stru3d
+data/mp3d
+data/scenecad
+
+diff_ras/build
+models/ops/build
+checkpoints
+s3d_floorplan_eval/montefloor_data
